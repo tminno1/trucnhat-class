@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phân Công Trực Nhật</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:'Inter',sans-serif;background:linear-gradient(120deg,#e0f2ff,#f5faff);}
+.header{background:linear-gradient(135deg,#3b82f6,#06b6d4);color:white;padding:25px;text-align:center;}
+.container{max-width:1200px;margin:-30px auto 40px;padding:20px;}
+.card{background:white;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 8px 20px rgba(0,0,0,.08);}
+h3{color:#1e3a8a;margin-top:0}
+textarea{width:100%;height:120px;padding:10px;border-radius:8px;border:1px solid #cbd5e1;}
+.task{display:flex;justify-content:space-between;padding:6px 0}
+.task input{width:60px}
+button{background:linear-gradient(135deg,#3b82f6,#06b6d4);color:white;border:none;border-radius:8px;padding:12px;cursor:pointer}
+.btn-outline{background:white;color:#2563eb;border:2px solid #2563eb}
+.day-box{border:1px solid #e2e8f0;border-radius:10px;padding:10px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.buoi label{margin-left:15px;cursor:pointer}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+th{background:#2563eb;color:white;padding:8px}
+td{padding:8px;border:1px solid #e2e8f0;vertical-align:top}
+tr:nth-child(even){background:#f8fafc}
+.sang{background:#ecfeff}
+.chieu{background:#fff7ed}
+.stat th{background:#0ea5e9}
+@media(max-width:600px){
+  .task{flex-direction:column;align-items:flex-start}
+  .task input{width:100%;margin-top:5px}
+  .day-box{flex-direction:column;align-items:flex-start}
+}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>📋 BẢNG PHÂN CÔNG TRỰC NHẬT</h1>
+<p>Mỗi Thứ chọn Sáng / Chiều riêng</p>
+</div>
+
+<div class="container">
+<div class="card">
+<h3>👥 Danh sách thành viên</h3>
+<textarea id="members" placeholder="Mỗi dòng 1 người"></textarea>
+<button class="btn-outline" onclick="shuffleMembers()">🔀 Xáo trộn thành viên</button>
+</div>
+
+<div class="card">
+<h3>🧹 Công việc & số lượng</h3>
+<div class="task">Quét lớp <input type="number" id="quet" value="1"></div>
+<div class="task">Lau bảng & Thay nước <input type="number" id="laubang" value="1"></div>
+<div class="task">Đổ rác <input type="number" id="dorac" value="1"></div>
+<div class="task">Lau lớp (chỉ Thứ 6) <input type="number" id="laulop" value="2"></div>
+</div>
+
+<div class="card">
+<h3>📅 Chọn buổi cho từng Thứ</h3>
+<div id="days"></div>
+</div>
+
+<button onclick="phanCong()">✨ Tạo bảng phân công & Lưu</button>
+
+<div class="card" id="schedule"></div>
+<div class="card" id="stats"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore.js";
+
+// ----------------------
+// THAY BẰNG THÔNG TIN FIREBASE CỦA BẠN
+const firebaseConfig = { 
+  apiKey : "AIzaSyDQOiW_pYVvo6n0C2KBAcMgPqqTwKMUhGw" , 
+  authDomain : "trucnhatclass.firebaseapp.com" , 
+  projectId : "trucnhatclass" , 
+  storageBucket : "trucnhatclass.firebasestorage.app" , 
+  messagingSenderId : "953049929216" , 
+  appId : "1:953049929216:web:2363dabb9446f577b4eae5" 
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+// ----------------------
+
+const dayNames=["Thứ 2","Thứ 3","Thứ 4","Thứ 5","Thứ 6"];
+let memberList=[];
+
+function renderDays(){
+    const d=document.getElementById("days");
+    d.innerHTML="";
+    dayNames.forEach((day,i)=>{
+        d.innerHTML+=`
+        <div class="day-box">
+            <strong>${day}</strong>
+            <div class="buoi">
+                <label><input type="checkbox" id="sang${i}"> Sáng</label>
+                <label><input type="checkbox" id="chieu${i}"> Chiều</label>
+            </div>
+        </div>`;
+    });
+}
+renderDays();
+
+function shuffleMembers(){
+    memberList=document.getElementById("members").value.split("\n").map(m=>m.trim()).filter(Boolean);
+    for(let i=memberList.length-1;i>0;i--){
+        let j=Math.floor(Math.random()*(i+1));
+        [memberList[i],memberList[j]]=[memberList[j],memberList[i]];
+    }
+    alert("Đã xáo trộn thành viên");
+}
+
+function phanCong(){
+    memberList=document.getElementById("members").value.split("\n").map(m=>m.trim()).filter(Boolean);
+    if(memberList.length===0){alert("Chưa có thành viên");return;}
+    let stat={};
+    memberList.forEach(m=>stat[m]={sang:0,chieu:0,total:0});
+    let tasks=[
+        {name:"Quét lớp",count:+document.getElementById("quet").value},
+        {name:"Lau bảng & Thay nước",count:+document.getElementById("laubang").value},
+        {name:"Đổ rác",count:+document.getElementById("dorac").value}
+    ];
+    let idx=0;
+    let html=`<table><tr><th>Thứ</th><th>Sáng</th><th>Chiều</th></tr>`;
+    dayNames.forEach((day,i)=>{
+        let sang="", chieu="";
+        if(document.getElementById(`sang${i}`).checked){
+            tasks.forEach(t=>{
+                let p=[];
+                for(let k=0;k<t.count;k++){
+                    let m=memberList[idx%memberList.length];
+                    p.push(m); stat[m].sang++; stat[m].total++; idx++;
+                }
+                sang+=`<b>${t.name}</b>: ${p.join(", ")}<br>`;
+            });
+            if(day==="Thứ 6"){
+                let p=[];
+                for(let k=0;k<+document.getElementById("laulop").value;k++){
+                    let m=memberList[idx%memberList.length];
+                    p.push(m); stat[m].sang++; stat[m].total++; idx++;
+                }
+                sang+=`<b>Lau lớp</b>: ${p.join(", ")}<br>`;
+            }
+        }
+        if(document.getElementById(`chieu${i}`).checked){
+            tasks.forEach(t=>{
+                let p=[];
+                for(let k=0;k<t.count;k++){
+                    let m=memberList[idx%memberList.length];
+                    p.push(m); stat[m].chieu++; stat[m].total++; idx++;
+                }
+                chieu+=`<b>${t.name}</b>: ${p.join(", ")}<br>`;
+            });
+            if(day==="Thứ 6"){
+                let p=[];
+                for(let k=0;k<+document.getElementById("laulop").value;k++){
+                    let m=memberList[idx%memberList.length];
+                    p.push(m); stat[m].chieu++; stat[m].total++; idx++;
+                }
+                chieu+=`<b>Lau lớp</b>: ${p.join(", ")}<br>`;
+            }
+        }
+        html+=`<tr><td><b>${day}</b></td><td class="sang">${sang||"-"}</td><td class="chieu">${chieu||"-"}</td></tr>`;
+    });
+    html+="</table>";
+    document.getElementById("schedule").innerHTML="<h3>📌 Bảng phân công</h3>"+html;
+
+    let statHTML=`<h3>📊 Thống kê số lần trực</h3><table class="stat"><tr><th>Thành viên</th><th>Sáng</th><th>Chiều</th><th>Tổng</th></tr>`;
+    Object.keys(stat).forEach(m=>{
+        statHTML+=`<tr><td>${m}</td><td>${stat[m].sang}</td><td>${stat[m].chieu}</td><td><b>${stat[m].total}</b></td></tr>`;
+    });
+    statHTML+="</table>";
+    document.getElementById("stats").innerHTML=statHTML;
+
+    // Lưu lên Firebase
+    saveToFirebase(memberList,tasks,stat);
+}
+
+// ---------------- FIREBASE ----------------
+async function saveToFirebase(members,tasks,stats){
+    const daysData={};
+    dayNames.forEach((day,i)=>{
+        daysData[day]={sang:document.getElementById(`sang${i}`).checked,chieu:document.getElementById(`chieu${i}`).checked};
+    });
+    await setDoc(doc(db,"class","main"),{
+        members,tasks,days:daysData,stats,updatedAt:Date.now()
+    });
+}
+
+// ---------------- LOAD FIREBASE ----------------
+onSnapshot(doc(db,"class","main"), (snap)=>{
+    if(snap.exists()){
+        const data=snap.data();
+        // Load members
+        document.getElementById("members").value=data.members.join("\n");
+        // Load days
+        dayNames.forEach((day,i)=>{
+            document.getElementById(`sang${i}`).checked=data.days[day].sang;
+            document.getElementById(`chieu${i}`).checked=data.days[day].chieu;
+        });
+        // Load bảng phân công nếu có
+        if(data.stats) phanCong();
+    }
+});
+</script>
+</body>
+</html>
